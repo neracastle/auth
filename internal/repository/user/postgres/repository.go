@@ -3,15 +3,27 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
+	"github.com/neracastle/go-libs/pkg/db"
+	"github.com/neracastle/go-libs/pkg/sys/logger"
 	"golang.org/x/exp/slog"
 
-	"github.com/neracastle/auth/internal/app/logger"
-	db "github.com/neracastle/auth/internal/client"
 	domain "github.com/neracastle/auth/internal/domain/user"
 	"github.com/neracastle/auth/internal/repository/user"
 	pgmodel "github.com/neracastle/auth/internal/repository/user/postgres/model"
+)
+
+const (
+	idColumn       = "id"
+	emailColumn    = "email"
+	passwordColumn = "password"
+	nameColumn     = "name"
+	roleColumn     = "role"
+	createdColumn  = "created_at"
+	updateColumn   = "updated_at"
 )
 
 var _ user.Repository = (*repo)(nil)
@@ -20,6 +32,7 @@ type repo struct {
 	conn db.Client
 }
 
+// New новый экземпляр репозитория pg
 func New(conn db.Client) user.Repository {
 	instance := &repo{conn: conn}
 
@@ -31,19 +44,25 @@ func (r *repo) Save(ctx context.Context, user *domain.User) error {
 	log = log.With(slog.String("method", "repository.user.postgres.Save"))
 	dto := FromDomainToRepo(user)
 
-	q := db.Query{Name: "Save", QueryRaw: "INSERT INTO auth.users(email, password, name, role) VALUES ($1, $2, $3, $4) RETURNING id"}
+	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	query, args, err := psql.Insert("auth.users").
+		Columns(emailColumn, passwordColumn, nameColumn, roleColumn).
+		Values(dto.Email, dto.Password, dto.Name, dto.IsAdmin).
+		Suffix(fmt.Sprintf("RETURNING %s", idColumn)).
+		ToSql()
+	if err != nil {
+		log.Error("failed to build update query", slog.String("error", err.Error()), slog.String("method", "repository.user.postgres.Update"))
+		return err
+	}
 
-	err := r.conn.DB().QueryRow(ctx, q,
-		dto.Email,
-		dto.Password,
-		dto.Name,
-		dto.IsAdmin).Scan(&user.Id)
+	q := db.Query{Name: "Save", QueryRaw: query}
+	err = r.conn.DB().QueryRow(ctx, q, args...).Scan(&user.ID)
 	if err != nil {
 		log.Error("failed to save user in db", slog.String("error", err.Error()))
 		return err
 	}
 
-	log.Debug("saved user in db", slog.Int64("id", user.Id))
+	log.Debug("saved user in db", slog.Int64("id", user.ID))
 
 	return nil
 }
@@ -52,13 +71,22 @@ func (r *repo) Update(ctx context.Context, user *domain.User) error {
 	log := logger.GetLogger(ctx)
 	dto := FromDomainToRepo(user)
 
-	q := db.Query{Name: "Update", QueryRaw: "UPDATE auth.users SET name = $1, email = $2, password = $3, role = $4, updated_at = now() WHERE id = $5"}
-	_, err := r.conn.DB().Exec(ctx, q,
-		dto.Name,
-		dto.Email,
-		dto.Password,
-		dto.IsAdmin,
-		dto.Id)
+	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	query, args, err := psql.Update("auth.users").
+		Set(emailColumn, dto.Email).
+		Set(nameColumn, dto.Name).
+		Set(passwordColumn, dto.Password).
+		Set(roleColumn, dto.IsAdmin).
+		Set(updateColumn, sq.Expr("now()")).
+		Where(sq.Eq{idColumn: dto.ID}).
+		ToSql()
+	if err != nil {
+		log.Error("failed to build update query", slog.String("error", err.Error()), slog.String("method", "repository.user.postgres.Update"))
+		return err
+	}
+
+	q := db.Query{Name: "Update", QueryRaw: query}
+	_, err = r.conn.DB().Exec(ctx, q, args...)
 	if err != nil {
 		log.Error("failed to update user in db", slog.String("error", err.Error()), slog.String("method", "repository.user.postgres.Update"))
 		return err
@@ -79,14 +107,28 @@ func (r *repo) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *repo) GetById(ctx context.Context, id int64) (*domain.User, error) {
+func (r *repo) Get(ctx context.Context, filter user.SearchFilter) (*domain.User, error) {
 	log := logger.GetLogger(ctx)
-	log = log.With(slog.String("method", "repository.user.postgres.GetById"), slog.Int64("user_id", id))
+	log = log.With(slog.String("method", "repository.user.postgres.Get"), slog.Int64("user_id", filter.ID), slog.String("email", filter.Email))
 
-	q := db.Query{Name: "GetById", QueryRaw: `SELECT id, email, password, name, role, created_at 
-									  		FROM auth.users 
-									  		WHERE id = $1`}
-	res, err := r.conn.DB().Query(ctx, q, id)
+	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	selQuery := psql.Select(idColumn, emailColumn, passwordColumn, nameColumn, roleColumn, createdColumn).From("auth.users")
+
+	if filter.ID > 0 {
+		selQuery = selQuery.Where(sq.Eq{idColumn: filter.ID})
+	}
+
+	if filter.Email != "" {
+		selQuery = selQuery.Where(sq.Eq{emailColumn: filter.Email})
+	}
+
+	queryStr, args, err := selQuery.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	q := db.Query{Name: "Get", QueryRaw: queryStr}
+	res, err := r.conn.DB().Query(ctx, q, args...)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -103,36 +145,7 @@ func (r *repo) GetById(ctx context.Context, id int64) (*domain.User, error) {
 		return nil, err
 	}
 
-	user := FromRepoToDomain(dto)
+	userAggr := FromRepoToDomain(dto)
 
-	return user, nil
-}
-
-func (r *repo) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	log := logger.GetLogger(ctx)
-	log = log.With(slog.String("method", "repository.user.postgres.GetByEmail"), slog.String("email", email))
-
-	q := db.Query{Name: "GetById", QueryRaw: `SELECT id, email, password, name, role, created_at 
-									  		FROM auth.users 
-									  		WHERE email = $1`}
-	res, err := r.conn.DB().Query(ctx, q, email)
-
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, user.ErrUserNotFound
-		}
-
-		log.Error("failed to get user from db", slog.String("error", err.Error()))
-
-		return nil, err
-	}
-
-	dto, err := pgx.CollectOneRow(res, pgx.RowToStructByName[pgmodel.UserDTO])
-	if err != nil {
-		return nil, err
-	}
-
-	user := FromRepoToDomain(dto)
-
-	return user, nil
+	return userAggr, nil
 }

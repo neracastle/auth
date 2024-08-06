@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/fatih/color"
@@ -14,7 +15,8 @@ import (
 
 func main() {
 
-	ap := app.NewApp(context.Background())
+	ctx := context.Background()
+	ap := app.NewApp(ctx)
 
 	go func() {
 		err := ap.Start()
@@ -23,12 +25,14 @@ func main() {
 		}
 	}()
 
-	sigChan := make(chan os.Signal)
+	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
-	signal.Notify(sigChan, os.Kill)
+	signal.Notify(sigChan, syscall.SIGTERM)
 
 	sig := <-sigChan
 	log.Println("received signal, graceful shutdown", sig)
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	ap.Shutdown(ctx)
 }
