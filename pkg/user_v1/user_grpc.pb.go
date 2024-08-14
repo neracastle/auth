@@ -19,10 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	UserV1_Create_FullMethodName = "/user_v1.UserV1/Create"
-	UserV1_Get_FullMethodName    = "/user_v1.UserV1/Get"
-	UserV1_Update_FullMethodName = "/user_v1.UserV1/Update"
-	UserV1_Delete_FullMethodName = "/user_v1.UserV1/Delete"
+	UserV1_Create_FullMethodName          = "/user_v1.UserV1/Create"
+	UserV1_Get_FullMethodName             = "/user_v1.UserV1/Get"
+	UserV1_Update_FullMethodName          = "/user_v1.UserV1/Update"
+	UserV1_Delete_FullMethodName          = "/user_v1.UserV1/Delete"
+	UserV1_Auth_FullMethodName            = "/user_v1.UserV1/Auth"
+	UserV1_GetAccessToken_FullMethodName  = "/user_v1.UserV1/GetAccessToken"
+	UserV1_GetRefreshToken_FullMethodName = "/user_v1.UserV1/GetRefreshToken"
+	UserV1_CanDelete_FullMethodName       = "/user_v1.UserV1/CanDelete"
 )
 
 // UserV1Client is the client API for UserV1 service.
@@ -33,6 +37,10 @@ type UserV1Client interface {
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
 	Update(ctx context.Context, in *UpdateRequest, opts ...grpc.CallOption) (*UpdateResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+	Auth(ctx context.Context, in *AuthRequest, opts ...grpc.CallOption) (*AuthResponse, error)
+	GetAccessToken(ctx context.Context, in *AccessRequest, opts ...grpc.CallOption) (*AccessResponse, error)
+	GetRefreshToken(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*RefreshResponse, error)
+	CanDelete(ctx context.Context, in *RightsRequest, opts ...grpc.CallOption) (*RightsResponse, error)
 }
 
 type userV1Client struct {
@@ -83,6 +91,46 @@ func (c *userV1Client) Delete(ctx context.Context, in *DeleteRequest, opts ...gr
 	return out, nil
 }
 
+func (c *userV1Client) Auth(ctx context.Context, in *AuthRequest, opts ...grpc.CallOption) (*AuthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuthResponse)
+	err := c.cc.Invoke(ctx, UserV1_Auth_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userV1Client) GetAccessToken(ctx context.Context, in *AccessRequest, opts ...grpc.CallOption) (*AccessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AccessResponse)
+	err := c.cc.Invoke(ctx, UserV1_GetAccessToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userV1Client) GetRefreshToken(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*RefreshResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RefreshResponse)
+	err := c.cc.Invoke(ctx, UserV1_GetRefreshToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userV1Client) CanDelete(ctx context.Context, in *RightsRequest, opts ...grpc.CallOption) (*RightsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RightsResponse)
+	err := c.cc.Invoke(ctx, UserV1_CanDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserV1Server is the server API for UserV1 service.
 // All implementations must embed UnimplementedUserV1Server
 // for forward compatibility
@@ -91,6 +139,10 @@ type UserV1Server interface {
 	Get(context.Context, *GetRequest) (*GetResponse, error)
 	Update(context.Context, *UpdateRequest) (*UpdateResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
+	Auth(context.Context, *AuthRequest) (*AuthResponse, error)
+	GetAccessToken(context.Context, *AccessRequest) (*AccessResponse, error)
+	GetRefreshToken(context.Context, *RefreshRequest) (*RefreshResponse, error)
+	CanDelete(context.Context, *RightsRequest) (*RightsResponse, error)
 	mustEmbedUnimplementedUserV1Server()
 }
 
@@ -109,6 +161,18 @@ func (UnimplementedUserV1Server) Update(context.Context, *UpdateRequest) (*Updat
 }
 func (UnimplementedUserV1Server) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedUserV1Server) Auth(context.Context, *AuthRequest) (*AuthResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Auth not implemented")
+}
+func (UnimplementedUserV1Server) GetAccessToken(context.Context, *AccessRequest) (*AccessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAccessToken not implemented")
+}
+func (UnimplementedUserV1Server) GetRefreshToken(context.Context, *RefreshRequest) (*RefreshResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRefreshToken not implemented")
+}
+func (UnimplementedUserV1Server) CanDelete(context.Context, *RightsRequest) (*RightsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CanDelete not implemented")
 }
 func (UnimplementedUserV1Server) mustEmbedUnimplementedUserV1Server() {}
 
@@ -195,6 +259,78 @@ func _UserV1_Delete_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserV1_Auth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserV1Server).Auth(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserV1_Auth_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserV1Server).Auth(ctx, req.(*AuthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserV1_GetAccessToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AccessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserV1Server).GetAccessToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserV1_GetAccessToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserV1Server).GetAccessToken(ctx, req.(*AccessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserV1_GetRefreshToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefreshRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserV1Server).GetRefreshToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserV1_GetRefreshToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserV1Server).GetRefreshToken(ctx, req.(*RefreshRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserV1_CanDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RightsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserV1Server).CanDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserV1_CanDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserV1Server).CanDelete(ctx, req.(*RightsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserV1_ServiceDesc is the grpc.ServiceDesc for UserV1 service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -217,6 +353,22 @@ var UserV1_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _UserV1_Delete_Handler,
+		},
+		{
+			MethodName: "Auth",
+			Handler:    _UserV1_Auth_Handler,
+		},
+		{
+			MethodName: "GetAccessToken",
+			Handler:    _UserV1_GetAccessToken_Handler,
+		},
+		{
+			MethodName: "GetRefreshToken",
+			Handler:    _UserV1_GetRefreshToken_Handler,
+		},
+		{
+			MethodName: "CanDelete",
+			Handler:    _UserV1_CanDelete_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

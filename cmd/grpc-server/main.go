@@ -12,7 +12,6 @@ import (
 )
 
 func main() {
-
 	ctx := context.Background()
 	ap := app.NewApp(ctx)
 

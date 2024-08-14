@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/neracastle/go-libs/pkg/sys/logger"
@@ -10,12 +11,19 @@ import (
 	"github.com/neracastle/auth/internal/repository/action/postgres/model"
 	userRepo "github.com/neracastle/auth/internal/repository/user"
 	def "github.com/neracastle/auth/internal/usecases/models"
+	"github.com/neracastle/auth/pkg/user_v1/auth"
 )
 
 // Update обновляет данные пользователя
 func (s *Service) Update(ctx context.Context, user def.UpdateDTO) error {
 	log := logger.GetLogger(ctx)
 	log.Debug("called", slog.String("method", "usecases.Update"), slog.Int64("user_id", user.ID))
+
+	tokenUser := auth.UserFromContext(ctx)
+	//получить данные пользователь может только по себе, а админ по всем
+	if tokenUser.ID != user.ID && !tokenUser.IsAdmin {
+		return errors.New("нет доступа к данному id")
+	}
 
 	dbUser, err := s.usersRepo.Get(ctx, userRepo.SearchFilter{ID: user.ID})
 
