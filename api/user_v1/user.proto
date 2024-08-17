@@ -52,6 +52,26 @@ service UserV1 {
       delete: "/user/v1/{id}"
     };
   }
+
+  rpc Auth(AuthRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/user/v1/auth"
+    };
+  }
+
+  rpc GetAccessToken(AccessRequest) returns (AccessResponse) {
+    option (google.api.http) = {
+      get: "/user/v1/access_token"
+    };
+  }
+
+  rpc GetRefreshToken(RefreshRequest) returns (RefreshResponse) {
+    option (google.api.http) = {
+      get: "/user/v1/refresh_token"
+    };
+  }
+
+  rpc CanDelete(RightsRequest) returns (RightsResponse);
 }
 
 enum Role {
@@ -64,8 +84,8 @@ message CreateRequest {
   string name = 1;
   string email = 2;
   string password = 3;
-  string password_confirm = 4;
-  Role role = 5 [(validate.rules).enum = { in: [1, 2] }];
+  string passwordConfirm = 4;
+  Role role = 5 [(validate.rules).enum = {in: [1, 2]}];
 }
 
 message CreateResponse {
@@ -99,3 +119,37 @@ message DeleteRequest {
 }
 
 message DeleteResponse {}
+
+message AuthRequest {
+  string login = 1;
+  string password = 2;
+}
+
+message AuthResponse {
+  string accessToken = 1;
+  string refreshToken = 2;
+}
+
+message AccessRequest {
+  string refreshToken = 1;
+}
+
+message AccessResponse {
+  string accessToken = 1;
+}
+
+message RefreshRequest {
+  string refreshToken = 1;
+}
+
+message RefreshResponse {
+  string refreshToken = 1;
+}
+
+message RightsRequest {
+  int64 userID = 1;
+}
+
+message RightsResponse {
+  bool can = 1;
+}

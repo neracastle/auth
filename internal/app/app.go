@@ -5,22 +5,19 @@ import (
 	"errors"
 	"log"
 	"net"
-	"net/http"
-	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/neracastle/go-libs/pkg/kafka"
 	"github.com/neracastle/go-libs/pkg/sys/logger"
 	"golang.org/x/exp/slog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
 
-	user_v12 "github.com/neracastle/auth/api/user_v1"
 	grpc_server "github.com/neracastle/auth/internal/grpc-server"
 	"github.com/neracastle/auth/internal/grpc-server/interceptors"
-	"github.com/neracastle/auth/internal/kafka"
 	"github.com/neracastle/auth/pkg/user_v1"
+	sharedinters "github.com/neracastle/auth/pkg/user_v1/auth/grpc-interceptors"
 )
 
 // App приложение
@@ -42,7 +39,12 @@ func (a *App) init(ctx context.Context) {
 		grpc.Creds(insecure.NewCredentials()),
 		grpc.ChainUnaryInterceptor(
 			interceptors.RequestIDInterceptor,
-			interceptors.NewLoggerInterceptor(lg)),
+			interceptors.NewLoggerInterceptor(lg),
+			sharedinters.NewAccessInterceptor([]string{
+				user_v1.UserV1_Get_FullMethodName,
+				user_v1.UserV1_Update_FullMethodName,
+				user_v1.UserV1_Delete_FullMethodName,
+			}, a.srvProvider.Config().JWT.SecretKey)),
 	)
 
 	reflection.Register(a.grpc)
@@ -67,21 +69,9 @@ func (a *App) Start() error {
 
 // StartHTTP запускает http сервис на прием запросов
 func (a *App) StartHTTP() error {
-	mux := runtime.NewServeMux()
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	}
-	_ = user_v1.RegisterUserV1HandlerFromEndpoint(context.Background(), mux, a.srvProvider.Config().GRPC.Address(), opts)
-
-	httpServer := &http.Server{
-		Addr:              a.srvProvider.Config().HTTP.Address(),
-		Handler:           NewCORSMux(mux),
-		ReadHeaderTimeout: 5 * time.Second, //защита от Slowloris Attack
-	}
-
 	log.Printf("UserAPI HTTP started on %s\n", a.srvProvider.Config().HTTP.Address())
 
-	if err := httpServer.ListenAndServe(); err != nil {
+	if err := a.srvProvider.HTTPServer().ListenAndServe(); err != nil {
 		return err
 	}
 
@@ -118,17 +108,8 @@ func (a *App) RunTopicLogger(ctx context.Context) {
 
 // StartSwaggerServer запускает сервер со swagger-документацией
 func (a *App) StartSwaggerServer() error {
-	mux := http.NewServeMux()
-	mux.Handle("/", user_v12.NewSwaggerFS(a.srvProvider.Config().HTTP.Port))
-
-	httpServer := &http.Server{
-		Addr:              a.srvProvider.Config().Swagger.Address(),
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second, //защита от Slowloris Attack
-	}
-
 	log.Printf("Swagger server started on %s\n", a.srvProvider.Config().Swagger.Address())
-	if err := httpServer.ListenAndServe(); err != nil {
+	if err := a.srvProvider.SwaggerServer().ListenAndServe(); err != nil {
 		return err
 	}
 
@@ -143,6 +124,8 @@ func (a *App) Shutdown(ctx context.Context) {
 		_ = a.srvProvider.consumer.Close()
 		_ = a.srvProvider.producer.Close()
 		_ = a.srvProvider.dbc.Close()
+		_ = a.srvProvider.httpServer.Close()
+		_ = a.srvProvider.swaggerServer.Close()
 		a.grpc.GracefulStop()
 		close(allClosed)
 	}()

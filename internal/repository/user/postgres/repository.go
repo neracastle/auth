@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/neracastle/go-libs/pkg/db"
 	"github.com/neracastle/go-libs/pkg/sys/logger"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/slog"
 
 	domain "github.com/neracastle/auth/internal/domain/user"
@@ -44,14 +45,20 @@ func (r *repo) Save(ctx context.Context, user *domain.User) error {
 	log = log.With(slog.String("method", "repository.user.postgres.Save"))
 	dto := FromDomainToRepo(user)
 
+	pwdHash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Error("failed to hash password", slog.String("error", err.Error()))
+		return err
+	}
+
 	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	query, args, err := psql.Insert("auth.users").
 		Columns(emailColumn, passwordColumn, nameColumn, roleColumn).
-		Values(dto.Email, dto.Password, dto.Name, dto.IsAdmin).
+		Values(dto.Email, pwdHash, dto.Name, dto.IsAdmin).
 		Suffix(fmt.Sprintf("RETURNING %s", idColumn)).
 		ToSql()
 	if err != nil {
-		log.Error("failed to build update query", slog.String("error", err.Error()), slog.String("method", "repository.user.postgres.Update"))
+		log.Error("failed to build update query", slog.String("error", err.Error()))
 		return err
 	}
 
