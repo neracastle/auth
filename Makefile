@@ -19,6 +19,7 @@ install-deps:
 	GOBIN=$(LOCAL_BIN) go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.21.0
 	GOBIN=$(LOCAL_BIN) go install github.com/envoyproxy/protoc-gen-validate
 	GOBIN=$(LOCAL_BIN) go install golang.org/x/perf/cmd/benchstat
+	GOBIN=$(LOCAL_BIN) go install github.com/bojand/ghz/cmd/ghz@latest
 
 get-deps:
 	go get -u google.golang.org/protobuf/cmd/protoc-gen-go

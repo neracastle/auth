@@ -20,6 +20,8 @@ type Config struct {
 	HTTP
 	JWT
 	Swagger
+	Prometheus
+	Trace
 	NewUsersTopic string `yaml:"new_users_topic" env:"NEW_USERS_TOPIC" env-required:"true"`
 }
 

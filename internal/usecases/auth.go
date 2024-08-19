@@ -5,10 +5,13 @@ import (
 	"errors"
 
 	"github.com/neracastle/go-libs/pkg/sys/logger"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/slog"
 
 	"github.com/neracastle/auth/internal/repository/user"
+	"github.com/neracastle/auth/internal/tracer"
 	"github.com/neracastle/auth/internal/usecases/models"
 	"github.com/neracastle/auth/pkg/user_v1/auth"
 )
@@ -18,9 +21,15 @@ var ErrWrongLoginOrPwd = errors.New("неверный логин или паро
 
 // Auth возвращает пользователя по его логину и паролю
 func (s *Service) Auth(ctx context.Context, login string, pwd string) (models.AuthTokens, error) {
-	log := logger.GetLogger(ctx)
-	log.Debug("called", slog.String("method", "usecases.Auth"))
+	const method = "usecases.Auth"
+	var span trace.Span
+	ctx, span = tracer.Span(ctx, method)
+	defer span.End()
 
+	log := logger.GetLogger(ctx)
+	log.Debug("called", slog.String("method", method))
+
+	span.AddEvent("get from repo", trace.WithAttributes(attribute.String("login", login)))
 	dbUser, err := s.usersRepo.Get(ctx, user.SearchFilter{Email: login})
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
@@ -35,6 +44,7 @@ func (s *Service) Auth(ctx context.Context, login string, pwd string) (models.Au
 		return models.AuthTokens{}, ErrWrongLoginOrPwd
 	}
 
+	span.AddEvent("generate tokens")
 	jwtUser := models.FromDomainToJWT(dbUser)
 
 	accessToken, err := auth.GenerateToken(jwtUser, []byte(s.Config.SecretKey), s.Config.AccessDuration)

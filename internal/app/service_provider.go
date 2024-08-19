@@ -3,21 +3,16 @@ package app
 import (
 	"context"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/IBM/sarama"
 	redigo "github.com/gomodule/redigo/redis"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/neracastle/go-libs/pkg/db"
 	"github.com/neracastle/go-libs/pkg/db/pg"
 	"github.com/neracastle/go-libs/pkg/kafka"
 	"github.com/neracastle/go-libs/pkg/redis"
 	redislib "github.com/neracastle/go-libs/pkg/redis/redis"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
-	api "github.com/neracastle/auth/api/user_v1"
 	"github.com/neracastle/auth/internal/config"
 	"github.com/neracastle/auth/internal/repository/action"
 	actionsPg "github.com/neracastle/auth/internal/repository/action/postgres"
@@ -25,7 +20,6 @@ import (
 	usersPg "github.com/neracastle/auth/internal/repository/user/postgres"
 	usersRedis "github.com/neracastle/auth/internal/repository/user/redis"
 	"github.com/neracastle/auth/internal/usecases"
-	"github.com/neracastle/auth/pkg/user_v1"
 )
 
 type serviceProvider struct {
@@ -38,8 +32,6 @@ type serviceProvider struct {
 	redis          redis.Client
 	consumer       kafka.Consumer
 	producer       sarama.SyncProducer
-	httpServer     *http.Server
-	swaggerServer  *http.Server
 }
 
 func newServiceProvider() *serviceProvider {
@@ -158,37 +150,4 @@ func (sp *serviceProvider) KafkaProducer() sarama.SyncProducer {
 	}
 
 	return sp.producer
-}
-
-func (sp *serviceProvider) HTTPServer() *http.Server {
-	if sp.httpServer == nil {
-		mux := runtime.NewServeMux()
-		opts := []grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		}
-		_ = user_v1.RegisterUserV1HandlerFromEndpoint(context.Background(), mux, sp.Config().GRPC.Address(), opts)
-
-		sp.httpServer = &http.Server{
-			Addr:              sp.Config().HTTP.Address(),
-			Handler:           NewCORSMux(mux),
-			ReadHeaderTimeout: 5 * time.Second, //защита от Slowloris Attack
-		}
-	}
-
-	return sp.httpServer
-}
-
-func (sp *serviceProvider) SwaggerServer() *http.Server {
-	if sp.swaggerServer == nil {
-		mux := http.NewServeMux()
-		mux.Handle("/", api.NewSwaggerFS(sp.Config().HTTP.Port))
-
-		sp.swaggerServer = &http.Server{
-			Addr:              sp.Config().Swagger.Address(),
-			Handler:           mux,
-			ReadHeaderTimeout: 5 * time.Second, //защита от Slowloris Attack
-		}
-	}
-
-	return sp.swaggerServer
 }

@@ -30,6 +30,7 @@ func FromDomainToJWT(dbUser *user.User) auth.JWTUser {
 			user_v1.UserV1_Update_FullMethodName,
 			user_v1.UserV1_Delete_FullMethodName,
 			chat_v1.ChatV1_Create_FullMethodName,
+			chat_v1.ChatV1_Delete_FullMethodName,
 		},
 	}
 }
