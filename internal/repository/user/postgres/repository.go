@@ -9,12 +9,14 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/neracastle/go-libs/pkg/db"
 	"github.com/neracastle/go-libs/pkg/sys/logger"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/slog"
 
 	domain "github.com/neracastle/auth/internal/domain/user"
 	"github.com/neracastle/auth/internal/repository/user"
 	pgmodel "github.com/neracastle/auth/internal/repository/user/postgres/model"
+	"github.com/neracastle/auth/internal/tracer"
 )
 
 const (
@@ -115,6 +117,10 @@ func (r *repo) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *repo) Get(ctx context.Context, filter user.SearchFilter) (*domain.User, error) {
+	var span trace.Span
+	ctx, span = tracer.Span(ctx, "repository.user.postgres.Get")
+	defer span.End()
+
 	log := logger.GetLogger(ctx)
 	log = log.With(slog.String("method", "repository.user.postgres.Get"), slog.Int64("user_id", filter.ID), slog.String("email", filter.Email))
 

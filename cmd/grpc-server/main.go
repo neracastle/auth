@@ -36,6 +36,13 @@ func main() {
 		}
 	}()
 
+	go func() {
+		err := ap.StartPrometheusServer()
+		if err != nil {
+			log.Printf("failed to start prometheus: %v\n", err)
+		}
+	}()
+
 	go ap.RunTopicLogger(ctx)
 
 	sigChan := make(chan os.Signal, 1)
