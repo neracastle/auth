@@ -7,10 +7,16 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/neracastle/go-libs/pkg/db"
 	"github.com/neracastle/go-libs/pkg/kafka"
+	syserr "github.com/neracastle/go-libs/pkg/sys/error"
 
 	"github.com/neracastle/auth/internal/repository/action"
 	"github.com/neracastle/auth/internal/repository/user"
 	def "github.com/neracastle/auth/internal/usecases/models"
+)
+
+var (
+	ErrUserNotFound         = syserr.New("Пользователь не найден", syserr.NotFound)
+	ErrUserPermissionDenied = syserr.New("Нет доступа к данному id", syserr.PermissionDenied)
 )
 
 // UserService возможные сценарии с пользователем

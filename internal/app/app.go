@@ -6,12 +6,12 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/neracastle/go-libs/pkg/kafka"
 	"github.com/neracastle/go-libs/pkg/sys/logger"
+	"github.com/neracastle/go-libs/pkg/sys/tracer"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
@@ -29,7 +29,6 @@ import (
 	embed "github.com/neracastle/auth/api/user_v1"
 	grpc_server "github.com/neracastle/auth/internal/grpc-server"
 	"github.com/neracastle/auth/internal/grpc-server/interceptors"
-	"github.com/neracastle/auth/internal/tracer"
 	"github.com/neracastle/auth/pkg/user_v1"
 	sharedinters "github.com/neracastle/auth/pkg/user_v1/auth/grpc-interceptors"
 )
@@ -52,16 +51,17 @@ func NewApp(ctx context.Context) *App {
 }
 
 func (a *App) init(ctx context.Context) {
-	lg := logger.SetupLogger(a.srvProvider.Config().Env)
+	a.initTracing(ctx, a.srvProvider.Config().Trace.ServiceName)
 
-	a.initTracing(ctx, "auth-service")
 	a.grpc = grpc.NewServer(
 		grpc.Creds(insecure.NewCredentials()),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainUnaryInterceptor(
+			interceptors.NewRateLimitInterceptor(a.srvProvider.RateLimiter()),
 			interceptors.MetricsInterceptor,
 			interceptors.RequestIDInterceptor,
-			interceptors.NewLoggerInterceptor(lg),
+			interceptors.NewLoggerInterceptor(a.srvProvider.Logger()),
+			interceptors.ErrorCodesInterceptor,
 			sharedinters.NewAccessInterceptor([]string{
 				user_v1.UserV1_Get_FullMethodName,
 				user_v1.UserV1_Update_FullMethodName,
@@ -74,10 +74,10 @@ func (a *App) init(ctx context.Context) {
 }
 
 func (a *App) initTracing(ctx context.Context, serviceName string) {
-	//экспортер в jaeger
+	//экспортер
 	exporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint(a.srvProvider.Config().Trace.JaegerGRPCAddress))
+		otlptracegrpc.WithEndpoint(a.srvProvider.Config().Trace.ExporterGRPCAddress))
 	if err != nil {
 		log.Fatalf("failed to create trace exporter: %v", err)
 	}
@@ -93,7 +93,7 @@ func (a *App) initTracing(ctx context.Context, serviceName string) {
 	}
 
 	traceProvider := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter, sdktrace.WithExportTimeout(time.Second*time.Duration(a.srvProvider.Config().Trace.BatchTimeout))),
+		sdktrace.WithBatcher(exporter, sdktrace.WithExportTimeout(a.srvProvider.Config().Trace.BatchTimeout)),
 		sdktrace.WithResource(r))
 
 	//пробрасываем провайдер для исп. в других местах приложения
@@ -132,9 +132,8 @@ func (a *App) StartHTTP() error {
 		_ = user_v1.RegisterUserV1HandlerFromEndpoint(context.Background(), mux, a.srvProvider.Config().GRPC.Address(), opts)
 
 		a.httpServer = &http.Server{
-			Addr:              a.srvProvider.Config().HTTP.Address(),
-			Handler:           NewCORSMux(mux),
-			ReadHeaderTimeout: 5 * time.Second, //защита от Slowloris Attack
+			Addr:    a.srvProvider.Config().HTTP.Address(),
+			Handler: NewCORSMux(mux),
 		}
 	}
 
@@ -145,10 +144,10 @@ func (a *App) StartHTTP() error {
 	return nil
 }
 
-// RunTopicLogger запускает прослушку сообщений кафки и просто их логгирует
+// RunTopicLogger запускает прослушку сообщений кафки и просто их логирует
 func (a *App) RunTopicLogger(ctx context.Context) {
 	topic := a.srvProvider.Config().NewUsersTopic
-	lg := logger.SetupLogger(a.srvProvider.Config().Env)
+	lg := logger.SetupLogger(logger.Env(a.srvProvider.Config().Env))
 	lg = lg.With(slog.String("topic", topic))
 
 	cons := a.srvProvider.KafkaConsumer()
@@ -182,9 +181,8 @@ func (a *App) StartSwaggerServer() error {
 		mux.Handle("/", embed.NewSwaggerFS(a.srvProvider.Config().HTTP.Port))
 
 		a.swaggerServer = &http.Server{
-			Addr:              a.srvProvider.Config().Swagger.Address(),
-			Handler:           mux,
-			ReadHeaderTimeout: 5 * time.Second, //защита от Slowloris Attack
+			Addr:    a.srvProvider.Config().Swagger.Address(),
+			Handler: mux,
 		}
 	}
 

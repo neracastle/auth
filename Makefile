@@ -82,3 +82,14 @@ github.com/neracastle/auth/internal/domain/...
 
 test-cover-total:
 	go tool cover -func=./coverage.out | grep "total" | awk '{print $$3}'
+
+grpc-load-test:
+	bin/ghz \
+		--proto api/user_v1/user.proto \
+		--import-paths=vendor.protogen \
+		--call user_v1.UserV1.Get \
+		--data '{"id": 12}' \
+		--rps 15 \
+		--total 450 \
+		--insecure \
+		localhost:50501

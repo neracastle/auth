@@ -2,21 +2,26 @@ package usecases
 
 import (
 	"context"
-	"math/rand/v2"
-	"time"
+	"log/slog"
 
+	"github.com/neracastle/go-libs/pkg/sys/logger"
+	"github.com/neracastle/go-libs/pkg/sys/tracer"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/neracastle/auth/internal/tracer"
+	"github.com/neracastle/auth/pkg/user_v1/auth"
 )
 
 // CanDelete проверяет, есть ли у пользователя права на удаление чего-либо в системе
 func (s *Service) CanDelete(ctx context.Context, userID int64) bool {
-	//dummy логика
+	const method = "usecases.CanDelete"
+	log := logger.GetLogger(ctx)
+	log.Debug("called", slog.String("method", method), slog.Int64("user_id", userID))
+
 	var span trace.Span
-	ctx, span = tracer.Span(ctx, "can_delete")
+	ctx, span = tracer.Span(ctx, method)
 	defer span.End()
 
-	time.Sleep(time.Millisecond * time.Duration(rand.Uint32N(1000)))
-	return userID > 0
+	tokenUser := auth.UserFromContext(ctx)
+
+	return tokenUser.IsAdmin
 }

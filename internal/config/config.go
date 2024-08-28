@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -11,8 +12,8 @@ const localConfigPath = "./.env"
 
 // Config Конфиги grpc сервера, бд и прочего. Можно задавать через env, можно в yml конфиге
 type Config struct {
-	Env           string `yaml:"env" env:"ENV" env-required:"true"`
-	UsersCacheTTL int    `yaml:"users_cache_ttl" env:"USERS_CACHE_TTL" env-default:"60"`
+	Env           string        `yaml:"env" env:"ENV" env-required:"true"`
+	UsersCacheTTL time.Duration `yaml:"users_cache_ttl" env:"USERS_CACHE_TTL" env-default:"60s"`
 	GRPC
 	Postgres
 	Redis
@@ -22,6 +23,7 @@ type Config struct {
 	Swagger
 	Prometheus
 	Trace
+	RateLimiter
 	NewUsersTopic string `yaml:"new_users_topic" env:"NEW_USERS_TOPIC" env-required:"true"`
 }
 

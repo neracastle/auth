@@ -140,6 +140,8 @@ volumes:
     driver: local
   grafana:
     driver: local
+  tempo:
+    driver: local
 
 networks:
   shared:

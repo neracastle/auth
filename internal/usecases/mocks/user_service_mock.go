@@ -19,6 +19,18 @@ type UserServiceMock struct {
 	t          minimock.Tester
 	finishOnce sync.Once
 
+	funcAuth          func(ctx context.Context, login string, pwd string) (a1 def.AuthTokens, err error)
+	inspectFuncAuth   func(ctx context.Context, login string, pwd string)
+	afterAuthCounter  uint64
+	beforeAuthCounter uint64
+	AuthMock          mUserServiceMockAuth
+
+	funcCanDelete          func(ctx context.Context, userID int64) (b1 bool)
+	inspectFuncCanDelete   func(ctx context.Context, userID int64)
+	afterCanDeleteCounter  uint64
+	beforeCanDeleteCounter uint64
+	CanDeleteMock          mUserServiceMockCanDelete
+
 	funcCreate          func(ctx context.Context, req def.CreateDTO) (i1 int64, err error)
 	inspectFuncCreate   func(ctx context.Context, req def.CreateDTO)
 	afterCreateCounter  uint64
@@ -37,6 +49,12 @@ type UserServiceMock struct {
 	beforeGetCounter uint64
 	GetMock          mUserServiceMockGet
 
+	funcRenewal          func(ctx context.Context, refreshToken string, isRenewAccess bool) (s1 string, err error)
+	inspectFuncRenewal   func(ctx context.Context, refreshToken string, isRenewAccess bool)
+	afterRenewalCounter  uint64
+	beforeRenewalCounter uint64
+	RenewalMock          mUserServiceMockRenewal
+
 	funcUpdate          func(ctx context.Context, user def.UpdateDTO) (err error)
 	inspectFuncUpdate   func(ctx context.Context, user def.UpdateDTO)
 	afterUpdateCounter  uint64
@@ -52,6 +70,12 @@ func NewUserServiceMock(t minimock.Tester) *UserServiceMock {
 		controller.RegisterMocker(m)
 	}
 
+	m.AuthMock = mUserServiceMockAuth{mock: m}
+	m.AuthMock.callArgs = []*UserServiceMockAuthParams{}
+
+	m.CanDeleteMock = mUserServiceMockCanDelete{mock: m}
+	m.CanDeleteMock.callArgs = []*UserServiceMockCanDeleteParams{}
+
 	m.CreateMock = mUserServiceMockCreate{mock: m}
 	m.CreateMock.callArgs = []*UserServiceMockCreateParams{}
 
@@ -61,12 +85,449 @@ func NewUserServiceMock(t minimock.Tester) *UserServiceMock {
 	m.GetMock = mUserServiceMockGet{mock: m}
 	m.GetMock.callArgs = []*UserServiceMockGetParams{}
 
+	m.RenewalMock = mUserServiceMockRenewal{mock: m}
+	m.RenewalMock.callArgs = []*UserServiceMockRenewalParams{}
+
 	m.UpdateMock = mUserServiceMockUpdate{mock: m}
 	m.UpdateMock.callArgs = []*UserServiceMockUpdateParams{}
 
 	t.Cleanup(m.MinimockFinish)
 
 	return m
+}
+
+type mUserServiceMockAuth struct {
+	mock               *UserServiceMock
+	defaultExpectation *UserServiceMockAuthExpectation
+	expectations       []*UserServiceMockAuthExpectation
+
+	callArgs []*UserServiceMockAuthParams
+	mutex    sync.RWMutex
+}
+
+// UserServiceMockAuthExpectation specifies expectation struct of the UserService.Auth
+type UserServiceMockAuthExpectation struct {
+	mock    *UserServiceMock
+	params  *UserServiceMockAuthParams
+	results *UserServiceMockAuthResults
+	Counter uint64
+}
+
+// UserServiceMockAuthParams contains parameters of the UserService.Auth
+type UserServiceMockAuthParams struct {
+	ctx   context.Context
+	login string
+	pwd   string
+}
+
+// UserServiceMockAuthResults contains results of the UserService.Auth
+type UserServiceMockAuthResults struct {
+	a1  def.AuthTokens
+	err error
+}
+
+// Expect sets up expected params for UserService.Auth
+func (mmAuth *mUserServiceMockAuth) Expect(ctx context.Context, login string, pwd string) *mUserServiceMockAuth {
+	if mmAuth.mock.funcAuth != nil {
+		mmAuth.mock.t.Fatalf("UserServiceMock.Auth mock is already set by Set")
+	}
+
+	if mmAuth.defaultExpectation == nil {
+		mmAuth.defaultExpectation = &UserServiceMockAuthExpectation{}
+	}
+
+	mmAuth.defaultExpectation.params = &UserServiceMockAuthParams{ctx, login, pwd}
+	for _, e := range mmAuth.expectations {
+		if minimock.Equal(e.params, mmAuth.defaultExpectation.params) {
+			mmAuth.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmAuth.defaultExpectation.params)
+		}
+	}
+
+	return mmAuth
+}
+
+// Inspect accepts an inspector function that has same arguments as the UserService.Auth
+func (mmAuth *mUserServiceMockAuth) Inspect(f func(ctx context.Context, login string, pwd string)) *mUserServiceMockAuth {
+	if mmAuth.mock.inspectFuncAuth != nil {
+		mmAuth.mock.t.Fatalf("Inspect function is already set for UserServiceMock.Auth")
+	}
+
+	mmAuth.mock.inspectFuncAuth = f
+
+	return mmAuth
+}
+
+// Return sets up results that will be returned by UserService.Auth
+func (mmAuth *mUserServiceMockAuth) Return(a1 def.AuthTokens, err error) *UserServiceMock {
+	if mmAuth.mock.funcAuth != nil {
+		mmAuth.mock.t.Fatalf("UserServiceMock.Auth mock is already set by Set")
+	}
+
+	if mmAuth.defaultExpectation == nil {
+		mmAuth.defaultExpectation = &UserServiceMockAuthExpectation{mock: mmAuth.mock}
+	}
+	mmAuth.defaultExpectation.results = &UserServiceMockAuthResults{a1, err}
+	return mmAuth.mock
+}
+
+// Set uses given function f to mock the UserService.Auth method
+func (mmAuth *mUserServiceMockAuth) Set(f func(ctx context.Context, login string, pwd string) (a1 def.AuthTokens, err error)) *UserServiceMock {
+	if mmAuth.defaultExpectation != nil {
+		mmAuth.mock.t.Fatalf("Default expectation is already set for the UserService.Auth method")
+	}
+
+	if len(mmAuth.expectations) > 0 {
+		mmAuth.mock.t.Fatalf("Some expectations are already set for the UserService.Auth method")
+	}
+
+	mmAuth.mock.funcAuth = f
+	return mmAuth.mock
+}
+
+// When sets expectation for the UserService.Auth which will trigger the result defined by the following
+// Then helper
+func (mmAuth *mUserServiceMockAuth) When(ctx context.Context, login string, pwd string) *UserServiceMockAuthExpectation {
+	if mmAuth.mock.funcAuth != nil {
+		mmAuth.mock.t.Fatalf("UserServiceMock.Auth mock is already set by Set")
+	}
+
+	expectation := &UserServiceMockAuthExpectation{
+		mock:   mmAuth.mock,
+		params: &UserServiceMockAuthParams{ctx, login, pwd},
+	}
+	mmAuth.expectations = append(mmAuth.expectations, expectation)
+	return expectation
+}
+
+// Then sets up UserService.Auth return parameters for the expectation previously defined by the When method
+func (e *UserServiceMockAuthExpectation) Then(a1 def.AuthTokens, err error) *UserServiceMock {
+	e.results = &UserServiceMockAuthResults{a1, err}
+	return e.mock
+}
+
+// Auth implements usecases.UserService
+func (mmAuth *UserServiceMock) Auth(ctx context.Context, login string, pwd string) (a1 def.AuthTokens, err error) {
+	mm_atomic.AddUint64(&mmAuth.beforeAuthCounter, 1)
+	defer mm_atomic.AddUint64(&mmAuth.afterAuthCounter, 1)
+
+	if mmAuth.inspectFuncAuth != nil {
+		mmAuth.inspectFuncAuth(ctx, login, pwd)
+	}
+
+	mm_params := UserServiceMockAuthParams{ctx, login, pwd}
+
+	// Record call args
+	mmAuth.AuthMock.mutex.Lock()
+	mmAuth.AuthMock.callArgs = append(mmAuth.AuthMock.callArgs, &mm_params)
+	mmAuth.AuthMock.mutex.Unlock()
+
+	for _, e := range mmAuth.AuthMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.a1, e.results.err
+		}
+	}
+
+	if mmAuth.AuthMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmAuth.AuthMock.defaultExpectation.Counter, 1)
+		mm_want := mmAuth.AuthMock.defaultExpectation.params
+		mm_got := UserServiceMockAuthParams{ctx, login, pwd}
+		if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmAuth.t.Errorf("UserServiceMock.Auth got unexpected parameters, want: %#v, got: %#v%s\n", *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmAuth.AuthMock.defaultExpectation.results
+		if mm_results == nil {
+			mmAuth.t.Fatal("No results are set for the UserServiceMock.Auth")
+		}
+		return (*mm_results).a1, (*mm_results).err
+	}
+	if mmAuth.funcAuth != nil {
+		return mmAuth.funcAuth(ctx, login, pwd)
+	}
+	mmAuth.t.Fatalf("Unexpected call to UserServiceMock.Auth. %v %v %v", ctx, login, pwd)
+	return
+}
+
+// AuthAfterCounter returns a count of finished UserServiceMock.Auth invocations
+func (mmAuth *UserServiceMock) AuthAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmAuth.afterAuthCounter)
+}
+
+// AuthBeforeCounter returns a count of UserServiceMock.Auth invocations
+func (mmAuth *UserServiceMock) AuthBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmAuth.beforeAuthCounter)
+}
+
+// Calls returns a list of arguments used in each call to UserServiceMock.Auth.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmAuth *mUserServiceMockAuth) Calls() []*UserServiceMockAuthParams {
+	mmAuth.mutex.RLock()
+
+	argCopy := make([]*UserServiceMockAuthParams, len(mmAuth.callArgs))
+	copy(argCopy, mmAuth.callArgs)
+
+	mmAuth.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockAuthDone returns true if the count of the Auth invocations corresponds
+// the number of defined expectations
+func (m *UserServiceMock) MinimockAuthDone() bool {
+	for _, e := range m.AuthMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.AuthMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterAuthCounter) < 1 {
+		return false
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcAuth != nil && mm_atomic.LoadUint64(&m.afterAuthCounter) < 1 {
+		return false
+	}
+	return true
+}
+
+// MinimockAuthInspect logs each unmet expectation
+func (m *UserServiceMock) MinimockAuthInspect() {
+	for _, e := range m.AuthMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to UserServiceMock.Auth with params: %#v", *e.params)
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.AuthMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterAuthCounter) < 1 {
+		if m.AuthMock.defaultExpectation.params == nil {
+			m.t.Error("Expected call to UserServiceMock.Auth")
+		} else {
+			m.t.Errorf("Expected call to UserServiceMock.Auth with params: %#v", *m.AuthMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcAuth != nil && mm_atomic.LoadUint64(&m.afterAuthCounter) < 1 {
+		m.t.Error("Expected call to UserServiceMock.Auth")
+	}
+}
+
+type mUserServiceMockCanDelete struct {
+	mock               *UserServiceMock
+	defaultExpectation *UserServiceMockCanDeleteExpectation
+	expectations       []*UserServiceMockCanDeleteExpectation
+
+	callArgs []*UserServiceMockCanDeleteParams
+	mutex    sync.RWMutex
+}
+
+// UserServiceMockCanDeleteExpectation specifies expectation struct of the UserService.CanDelete
+type UserServiceMockCanDeleteExpectation struct {
+	mock    *UserServiceMock
+	params  *UserServiceMockCanDeleteParams
+	results *UserServiceMockCanDeleteResults
+	Counter uint64
+}
+
+// UserServiceMockCanDeleteParams contains parameters of the UserService.CanDelete
+type UserServiceMockCanDeleteParams struct {
+	ctx    context.Context
+	userID int64
+}
+
+// UserServiceMockCanDeleteResults contains results of the UserService.CanDelete
+type UserServiceMockCanDeleteResults struct {
+	b1 bool
+}
+
+// Expect sets up expected params for UserService.CanDelete
+func (mmCanDelete *mUserServiceMockCanDelete) Expect(ctx context.Context, userID int64) *mUserServiceMockCanDelete {
+	if mmCanDelete.mock.funcCanDelete != nil {
+		mmCanDelete.mock.t.Fatalf("UserServiceMock.CanDelete mock is already set by Set")
+	}
+
+	if mmCanDelete.defaultExpectation == nil {
+		mmCanDelete.defaultExpectation = &UserServiceMockCanDeleteExpectation{}
+	}
+
+	mmCanDelete.defaultExpectation.params = &UserServiceMockCanDeleteParams{ctx, userID}
+	for _, e := range mmCanDelete.expectations {
+		if minimock.Equal(e.params, mmCanDelete.defaultExpectation.params) {
+			mmCanDelete.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmCanDelete.defaultExpectation.params)
+		}
+	}
+
+	return mmCanDelete
+}
+
+// Inspect accepts an inspector function that has same arguments as the UserService.CanDelete
+func (mmCanDelete *mUserServiceMockCanDelete) Inspect(f func(ctx context.Context, userID int64)) *mUserServiceMockCanDelete {
+	if mmCanDelete.mock.inspectFuncCanDelete != nil {
+		mmCanDelete.mock.t.Fatalf("Inspect function is already set for UserServiceMock.CanDelete")
+	}
+
+	mmCanDelete.mock.inspectFuncCanDelete = f
+
+	return mmCanDelete
+}
+
+// Return sets up results that will be returned by UserService.CanDelete
+func (mmCanDelete *mUserServiceMockCanDelete) Return(b1 bool) *UserServiceMock {
+	if mmCanDelete.mock.funcCanDelete != nil {
+		mmCanDelete.mock.t.Fatalf("UserServiceMock.CanDelete mock is already set by Set")
+	}
+
+	if mmCanDelete.defaultExpectation == nil {
+		mmCanDelete.defaultExpectation = &UserServiceMockCanDeleteExpectation{mock: mmCanDelete.mock}
+	}
+	mmCanDelete.defaultExpectation.results = &UserServiceMockCanDeleteResults{b1}
+	return mmCanDelete.mock
+}
+
+// Set uses given function f to mock the UserService.CanDelete method
+func (mmCanDelete *mUserServiceMockCanDelete) Set(f func(ctx context.Context, userID int64) (b1 bool)) *UserServiceMock {
+	if mmCanDelete.defaultExpectation != nil {
+		mmCanDelete.mock.t.Fatalf("Default expectation is already set for the UserService.CanDelete method")
+	}
+
+	if len(mmCanDelete.expectations) > 0 {
+		mmCanDelete.mock.t.Fatalf("Some expectations are already set for the UserService.CanDelete method")
+	}
+
+	mmCanDelete.mock.funcCanDelete = f
+	return mmCanDelete.mock
+}
+
+// When sets expectation for the UserService.CanDelete which will trigger the result defined by the following
+// Then helper
+func (mmCanDelete *mUserServiceMockCanDelete) When(ctx context.Context, userID int64) *UserServiceMockCanDeleteExpectation {
+	if mmCanDelete.mock.funcCanDelete != nil {
+		mmCanDelete.mock.t.Fatalf("UserServiceMock.CanDelete mock is already set by Set")
+	}
+
+	expectation := &UserServiceMockCanDeleteExpectation{
+		mock:   mmCanDelete.mock,
+		params: &UserServiceMockCanDeleteParams{ctx, userID},
+	}
+	mmCanDelete.expectations = append(mmCanDelete.expectations, expectation)
+	return expectation
+}
+
+// Then sets up UserService.CanDelete return parameters for the expectation previously defined by the When method
+func (e *UserServiceMockCanDeleteExpectation) Then(b1 bool) *UserServiceMock {
+	e.results = &UserServiceMockCanDeleteResults{b1}
+	return e.mock
+}
+
+// CanDelete implements usecases.UserService
+func (mmCanDelete *UserServiceMock) CanDelete(ctx context.Context, userID int64) (b1 bool) {
+	mm_atomic.AddUint64(&mmCanDelete.beforeCanDeleteCounter, 1)
+	defer mm_atomic.AddUint64(&mmCanDelete.afterCanDeleteCounter, 1)
+
+	if mmCanDelete.inspectFuncCanDelete != nil {
+		mmCanDelete.inspectFuncCanDelete(ctx, userID)
+	}
+
+	mm_params := UserServiceMockCanDeleteParams{ctx, userID}
+
+	// Record call args
+	mmCanDelete.CanDeleteMock.mutex.Lock()
+	mmCanDelete.CanDeleteMock.callArgs = append(mmCanDelete.CanDeleteMock.callArgs, &mm_params)
+	mmCanDelete.CanDeleteMock.mutex.Unlock()
+
+	for _, e := range mmCanDelete.CanDeleteMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.b1
+		}
+	}
+
+	if mmCanDelete.CanDeleteMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmCanDelete.CanDeleteMock.defaultExpectation.Counter, 1)
+		mm_want := mmCanDelete.CanDeleteMock.defaultExpectation.params
+		mm_got := UserServiceMockCanDeleteParams{ctx, userID}
+		if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmCanDelete.t.Errorf("UserServiceMock.CanDelete got unexpected parameters, want: %#v, got: %#v%s\n", *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmCanDelete.CanDeleteMock.defaultExpectation.results
+		if mm_results == nil {
+			mmCanDelete.t.Fatal("No results are set for the UserServiceMock.CanDelete")
+		}
+		return (*mm_results).b1
+	}
+	if mmCanDelete.funcCanDelete != nil {
+		return mmCanDelete.funcCanDelete(ctx, userID)
+	}
+	mmCanDelete.t.Fatalf("Unexpected call to UserServiceMock.CanDelete. %v %v", ctx, userID)
+	return
+}
+
+// CanDeleteAfterCounter returns a count of finished UserServiceMock.CanDelete invocations
+func (mmCanDelete *UserServiceMock) CanDeleteAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmCanDelete.afterCanDeleteCounter)
+}
+
+// CanDeleteBeforeCounter returns a count of UserServiceMock.CanDelete invocations
+func (mmCanDelete *UserServiceMock) CanDeleteBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmCanDelete.beforeCanDeleteCounter)
+}
+
+// Calls returns a list of arguments used in each call to UserServiceMock.CanDelete.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmCanDelete *mUserServiceMockCanDelete) Calls() []*UserServiceMockCanDeleteParams {
+	mmCanDelete.mutex.RLock()
+
+	argCopy := make([]*UserServiceMockCanDeleteParams, len(mmCanDelete.callArgs))
+	copy(argCopy, mmCanDelete.callArgs)
+
+	mmCanDelete.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockCanDeleteDone returns true if the count of the CanDelete invocations corresponds
+// the number of defined expectations
+func (m *UserServiceMock) MinimockCanDeleteDone() bool {
+	for _, e := range m.CanDeleteMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.CanDeleteMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterCanDeleteCounter) < 1 {
+		return false
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcCanDelete != nil && mm_atomic.LoadUint64(&m.afterCanDeleteCounter) < 1 {
+		return false
+	}
+	return true
+}
+
+// MinimockCanDeleteInspect logs each unmet expectation
+func (m *UserServiceMock) MinimockCanDeleteInspect() {
+	for _, e := range m.CanDeleteMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to UserServiceMock.CanDelete with params: %#v", *e.params)
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.CanDeleteMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterCanDeleteCounter) < 1 {
+		if m.CanDeleteMock.defaultExpectation.params == nil {
+			m.t.Error("Expected call to UserServiceMock.CanDelete")
+		} else {
+			m.t.Errorf("Expected call to UserServiceMock.CanDelete with params: %#v", *m.CanDeleteMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcCanDelete != nil && mm_atomic.LoadUint64(&m.afterCanDeleteCounter) < 1 {
+		m.t.Error("Expected call to UserServiceMock.CanDelete")
+	}
 }
 
 type mUserServiceMockCreate struct {
@@ -719,6 +1180,224 @@ func (m *UserServiceMock) MinimockGetInspect() {
 	}
 }
 
+type mUserServiceMockRenewal struct {
+	mock               *UserServiceMock
+	defaultExpectation *UserServiceMockRenewalExpectation
+	expectations       []*UserServiceMockRenewalExpectation
+
+	callArgs []*UserServiceMockRenewalParams
+	mutex    sync.RWMutex
+}
+
+// UserServiceMockRenewalExpectation specifies expectation struct of the UserService.Renewal
+type UserServiceMockRenewalExpectation struct {
+	mock    *UserServiceMock
+	params  *UserServiceMockRenewalParams
+	results *UserServiceMockRenewalResults
+	Counter uint64
+}
+
+// UserServiceMockRenewalParams contains parameters of the UserService.Renewal
+type UserServiceMockRenewalParams struct {
+	ctx           context.Context
+	refreshToken  string
+	isRenewAccess bool
+}
+
+// UserServiceMockRenewalResults contains results of the UserService.Renewal
+type UserServiceMockRenewalResults struct {
+	s1  string
+	err error
+}
+
+// Expect sets up expected params for UserService.Renewal
+func (mmRenewal *mUserServiceMockRenewal) Expect(ctx context.Context, refreshToken string, isRenewAccess bool) *mUserServiceMockRenewal {
+	if mmRenewal.mock.funcRenewal != nil {
+		mmRenewal.mock.t.Fatalf("UserServiceMock.Renewal mock is already set by Set")
+	}
+
+	if mmRenewal.defaultExpectation == nil {
+		mmRenewal.defaultExpectation = &UserServiceMockRenewalExpectation{}
+	}
+
+	mmRenewal.defaultExpectation.params = &UserServiceMockRenewalParams{ctx, refreshToken, isRenewAccess}
+	for _, e := range mmRenewal.expectations {
+		if minimock.Equal(e.params, mmRenewal.defaultExpectation.params) {
+			mmRenewal.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmRenewal.defaultExpectation.params)
+		}
+	}
+
+	return mmRenewal
+}
+
+// Inspect accepts an inspector function that has same arguments as the UserService.Renewal
+func (mmRenewal *mUserServiceMockRenewal) Inspect(f func(ctx context.Context, refreshToken string, isRenewAccess bool)) *mUserServiceMockRenewal {
+	if mmRenewal.mock.inspectFuncRenewal != nil {
+		mmRenewal.mock.t.Fatalf("Inspect function is already set for UserServiceMock.Renewal")
+	}
+
+	mmRenewal.mock.inspectFuncRenewal = f
+
+	return mmRenewal
+}
+
+// Return sets up results that will be returned by UserService.Renewal
+func (mmRenewal *mUserServiceMockRenewal) Return(s1 string, err error) *UserServiceMock {
+	if mmRenewal.mock.funcRenewal != nil {
+		mmRenewal.mock.t.Fatalf("UserServiceMock.Renewal mock is already set by Set")
+	}
+
+	if mmRenewal.defaultExpectation == nil {
+		mmRenewal.defaultExpectation = &UserServiceMockRenewalExpectation{mock: mmRenewal.mock}
+	}
+	mmRenewal.defaultExpectation.results = &UserServiceMockRenewalResults{s1, err}
+	return mmRenewal.mock
+}
+
+// Set uses given function f to mock the UserService.Renewal method
+func (mmRenewal *mUserServiceMockRenewal) Set(f func(ctx context.Context, refreshToken string, isRenewAccess bool) (s1 string, err error)) *UserServiceMock {
+	if mmRenewal.defaultExpectation != nil {
+		mmRenewal.mock.t.Fatalf("Default expectation is already set for the UserService.Renewal method")
+	}
+
+	if len(mmRenewal.expectations) > 0 {
+		mmRenewal.mock.t.Fatalf("Some expectations are already set for the UserService.Renewal method")
+	}
+
+	mmRenewal.mock.funcRenewal = f
+	return mmRenewal.mock
+}
+
+// When sets expectation for the UserService.Renewal which will trigger the result defined by the following
+// Then helper
+func (mmRenewal *mUserServiceMockRenewal) When(ctx context.Context, refreshToken string, isRenewAccess bool) *UserServiceMockRenewalExpectation {
+	if mmRenewal.mock.funcRenewal != nil {
+		mmRenewal.mock.t.Fatalf("UserServiceMock.Renewal mock is already set by Set")
+	}
+
+	expectation := &UserServiceMockRenewalExpectation{
+		mock:   mmRenewal.mock,
+		params: &UserServiceMockRenewalParams{ctx, refreshToken, isRenewAccess},
+	}
+	mmRenewal.expectations = append(mmRenewal.expectations, expectation)
+	return expectation
+}
+
+// Then sets up UserService.Renewal return parameters for the expectation previously defined by the When method
+func (e *UserServiceMockRenewalExpectation) Then(s1 string, err error) *UserServiceMock {
+	e.results = &UserServiceMockRenewalResults{s1, err}
+	return e.mock
+}
+
+// Renewal implements usecases.UserService
+func (mmRenewal *UserServiceMock) Renewal(ctx context.Context, refreshToken string, isRenewAccess bool) (s1 string, err error) {
+	mm_atomic.AddUint64(&mmRenewal.beforeRenewalCounter, 1)
+	defer mm_atomic.AddUint64(&mmRenewal.afterRenewalCounter, 1)
+
+	if mmRenewal.inspectFuncRenewal != nil {
+		mmRenewal.inspectFuncRenewal(ctx, refreshToken, isRenewAccess)
+	}
+
+	mm_params := UserServiceMockRenewalParams{ctx, refreshToken, isRenewAccess}
+
+	// Record call args
+	mmRenewal.RenewalMock.mutex.Lock()
+	mmRenewal.RenewalMock.callArgs = append(mmRenewal.RenewalMock.callArgs, &mm_params)
+	mmRenewal.RenewalMock.mutex.Unlock()
+
+	for _, e := range mmRenewal.RenewalMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.s1, e.results.err
+		}
+	}
+
+	if mmRenewal.RenewalMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmRenewal.RenewalMock.defaultExpectation.Counter, 1)
+		mm_want := mmRenewal.RenewalMock.defaultExpectation.params
+		mm_got := UserServiceMockRenewalParams{ctx, refreshToken, isRenewAccess}
+		if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmRenewal.t.Errorf("UserServiceMock.Renewal got unexpected parameters, want: %#v, got: %#v%s\n", *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmRenewal.RenewalMock.defaultExpectation.results
+		if mm_results == nil {
+			mmRenewal.t.Fatal("No results are set for the UserServiceMock.Renewal")
+		}
+		return (*mm_results).s1, (*mm_results).err
+	}
+	if mmRenewal.funcRenewal != nil {
+		return mmRenewal.funcRenewal(ctx, refreshToken, isRenewAccess)
+	}
+	mmRenewal.t.Fatalf("Unexpected call to UserServiceMock.Renewal. %v %v %v", ctx, refreshToken, isRenewAccess)
+	return
+}
+
+// RenewalAfterCounter returns a count of finished UserServiceMock.Renewal invocations
+func (mmRenewal *UserServiceMock) RenewalAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmRenewal.afterRenewalCounter)
+}
+
+// RenewalBeforeCounter returns a count of UserServiceMock.Renewal invocations
+func (mmRenewal *UserServiceMock) RenewalBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmRenewal.beforeRenewalCounter)
+}
+
+// Calls returns a list of arguments used in each call to UserServiceMock.Renewal.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmRenewal *mUserServiceMockRenewal) Calls() []*UserServiceMockRenewalParams {
+	mmRenewal.mutex.RLock()
+
+	argCopy := make([]*UserServiceMockRenewalParams, len(mmRenewal.callArgs))
+	copy(argCopy, mmRenewal.callArgs)
+
+	mmRenewal.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockRenewalDone returns true if the count of the Renewal invocations corresponds
+// the number of defined expectations
+func (m *UserServiceMock) MinimockRenewalDone() bool {
+	for _, e := range m.RenewalMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.RenewalMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterRenewalCounter) < 1 {
+		return false
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcRenewal != nil && mm_atomic.LoadUint64(&m.afterRenewalCounter) < 1 {
+		return false
+	}
+	return true
+}
+
+// MinimockRenewalInspect logs each unmet expectation
+func (m *UserServiceMock) MinimockRenewalInspect() {
+	for _, e := range m.RenewalMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to UserServiceMock.Renewal with params: %#v", *e.params)
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.RenewalMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterRenewalCounter) < 1 {
+		if m.RenewalMock.defaultExpectation.params == nil {
+			m.t.Error("Expected call to UserServiceMock.Renewal")
+		} else {
+			m.t.Errorf("Expected call to UserServiceMock.Renewal with params: %#v", *m.RenewalMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcRenewal != nil && mm_atomic.LoadUint64(&m.afterRenewalCounter) < 1 {
+		m.t.Error("Expected call to UserServiceMock.Renewal")
+	}
+}
+
 type mUserServiceMockUpdate struct {
 	mock               *UserServiceMock
 	defaultExpectation *UserServiceMockUpdateExpectation
@@ -939,11 +1618,17 @@ func (m *UserServiceMock) MinimockUpdateInspect() {
 func (m *UserServiceMock) MinimockFinish() {
 	m.finishOnce.Do(func() {
 		if !m.minimockDone() {
+			m.MinimockAuthInspect()
+
+			m.MinimockCanDeleteInspect()
+
 			m.MinimockCreateInspect()
 
 			m.MinimockDeleteInspect()
 
 			m.MinimockGetInspect()
+
+			m.MinimockRenewalInspect()
 
 			m.MinimockUpdateInspect()
 			m.t.FailNow()
@@ -970,8 +1655,11 @@ func (m *UserServiceMock) MinimockWait(timeout mm_time.Duration) {
 func (m *UserServiceMock) minimockDone() bool {
 	done := true
 	return done &&
+		m.MinimockAuthDone() &&
+		m.MinimockCanDeleteDone() &&
 		m.MinimockCreateDone() &&
 		m.MinimockDeleteDone() &&
 		m.MinimockGetDone() &&
+		m.MinimockRenewalDone() &&
 		m.MinimockUpdateDone()
 }
