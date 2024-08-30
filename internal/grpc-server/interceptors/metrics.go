@@ -10,8 +10,7 @@ import (
 )
 
 var (
-	requestDuration     *prometheus.HistogramVec
-	lastRequestDuration prometheus.Gauge
+	requestDuration *prometheus.HistogramVec
 )
 
 const appName = "auth"
@@ -24,12 +23,6 @@ func init() {
 		Help:      "Duration of API requests",
 		Buckets:   prometheus.ExponentialBuckets(0.0001, 4, 12),
 	}, []string{"status"})
-
-	lastRequestDuration = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "users",
-		Subsystem: "grpc",
-		Name:      appName + "_last_request_duration_seconds",
-	})
 }
 
 func MetricsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -43,7 +36,6 @@ func MetricsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServe
 	}
 
 	requestDuration.WithLabelValues(status).Observe(latency.Seconds())
-	lastRequestDuration.Set(latency.Seconds())
 
 	return next, err
 }

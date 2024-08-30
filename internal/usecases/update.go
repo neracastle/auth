@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	syserr "github.com/neracastle/go-libs/pkg/sys/error"
 	"github.com/neracastle/go-libs/pkg/sys/logger"
 	"golang.org/x/exp/slog"
 
@@ -16,18 +17,22 @@ import (
 
 // Update обновляет данные пользователя
 func (s *Service) Update(ctx context.Context, user def.UpdateDTO) error {
-	log := logger.GetLogger(ctx)
-	log.Debug("called", slog.String("method", "usecases.Update"), slog.Int64("user_id", user.ID))
+	log := logger.GetLogger(ctx).With(slog.String("method", "usecases.Update"))
+	log.Debug("called", slog.Int64("user_id", user.ID))
 
 	tokenUser := auth.UserFromContext(ctx)
 	//получить данные пользователь может только по себе, а админ по всем
 	if tokenUser.ID != user.ID && !tokenUser.IsAdmin {
-		return errors.New("нет доступа к данному id")
+		return ErrUserPermissionDenied
 	}
 
 	dbUser, err := s.usersRepo.Get(ctx, userRepo.SearchFilter{ID: user.ID})
 
 	if err != nil {
+		if errors.Is(err, userRepo.ErrUserNotFound) {
+			return ErrUserNotFound
+		}
+
 		return err
 	}
 
@@ -43,7 +48,7 @@ func (s *Service) Update(ctx context.Context, user def.UpdateDTO) error {
 	oldEmail := dbUser.Email
 	err = dbUser.ChangeEmail(user.Email)
 	if err != nil {
-		return err
+		return syserr.NewFromError(err, syserr.DomainLogic)
 	}
 
 	err = s.db.ReadCommitted(ctx, func(ctx context.Context) error {
@@ -63,5 +68,9 @@ func (s *Service) Update(ctx context.Context, user def.UpdateDTO) error {
 		return err
 	})
 
-	return err
+	if err != nil {
+		return syserr.New("Не удалось обновить пользователя", syserr.Internal)
+	}
+
+	return nil
 }

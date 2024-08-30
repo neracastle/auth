@@ -4,14 +4,14 @@ import (
 	"context"
 	"errors"
 
+	syserr "github.com/neracastle/go-libs/pkg/sys/error"
 	"github.com/neracastle/go-libs/pkg/sys/logger"
-	"go.opentelemetry.io/otel/attribute"
+	"github.com/neracastle/go-libs/pkg/sys/tracer"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/slog"
 
 	"github.com/neracastle/auth/internal/repository/user"
-	"github.com/neracastle/auth/internal/tracer"
 	"github.com/neracastle/auth/internal/usecases/models"
 	"github.com/neracastle/auth/pkg/user_v1/auth"
 )
@@ -29,11 +29,14 @@ func (s *Service) Auth(ctx context.Context, login string, pwd string) (models.Au
 	log := logger.GetLogger(ctx)
 	log.Debug("called", slog.String("method", method))
 
-	span.AddEvent("get from repo", trace.WithAttributes(attribute.String("login", login)))
+	if login == "" || pwd == "" {
+		return models.AuthTokens{}, syserr.NewFromError(ErrWrongLoginOrPwd, syserr.Unauthenticated)
+	}
+
 	dbUser, err := s.usersRepo.Get(ctx, user.SearchFilter{Email: login})
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
-			return models.AuthTokens{}, ErrWrongLoginOrPwd
+			return models.AuthTokens{}, syserr.NewFromError(ErrWrongLoginOrPwd, syserr.Unauthenticated)
 		}
 
 		return models.AuthTokens{}, err
@@ -41,7 +44,7 @@ func (s *Service) Auth(ctx context.Context, login string, pwd string) (models.Au
 
 	err = bcrypt.CompareHashAndPassword([]byte(dbUser.Password), []byte(pwd))
 	if err != nil {
-		return models.AuthTokens{}, ErrWrongLoginOrPwd
+		return models.AuthTokens{}, syserr.NewFromError(ErrWrongLoginOrPwd, syserr.Unauthenticated)
 	}
 
 	span.AddEvent("generate tokens")

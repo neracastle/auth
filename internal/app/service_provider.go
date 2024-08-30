@@ -12,6 +12,12 @@ import (
 	"github.com/neracastle/go-libs/pkg/kafka"
 	"github.com/neracastle/go-libs/pkg/redis"
 	redislib "github.com/neracastle/go-libs/pkg/redis/redis"
+	"github.com/neracastle/go-libs/pkg/sys/logger"
+	"github.com/neracastle/go-libs/pkg/sys/rate_limiter"
+	"github.com/neracastle/go-libs/pkg/sys/tracer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/slog"
 
 	"github.com/neracastle/auth/internal/config"
 	"github.com/neracastle/auth/internal/repository/action"
@@ -24,6 +30,7 @@ import (
 
 type serviceProvider struct {
 	conf           *config.Config
+	logger         *slog.Logger
 	usecaseService usecases.UserService
 	usersRepo      user.Repository
 	usersCache     user.Cache
@@ -32,6 +39,8 @@ type serviceProvider struct {
 	redis          redis.Client
 	consumer       kafka.Consumer
 	producer       sarama.SyncProducer
+	rateLimiter    *rate_limiter.RateLimiter
+	queryLogger    db.QueryLogger
 }
 
 func newServiceProvider() *serviceProvider {
@@ -59,6 +68,7 @@ func (sp *serviceProvider) DbClient(ctx context.Context) db.Client {
 			log.Fatalf("failed ping to pg: %v", err)
 		}
 
+		client.DB().SetQueryLogger(sp.QueryLogger())
 		sp.dbc = client
 	}
 
@@ -115,7 +125,7 @@ func (sp *serviceProvider) UsersService(ctx context.Context) usecases.UserServic
 			sp.KafkaProducer(),
 			sp.KafkaConsumer(),
 			usecases.Config{
-				CacheTTL:        time.Second * time.Duration(sp.Config().UsersCacheTTL),
+				CacheTTL:        sp.Config().UsersCacheTTL,
 				NewUserTopic:    sp.Config().NewUsersTopic,
 				SecretKey:       sp.Config().JWT.SecretKey,
 				AccessDuration:  sp.Config().JWT.AccessDuration,
@@ -150,4 +160,34 @@ func (sp *serviceProvider) KafkaProducer() sarama.SyncProducer {
 	}
 
 	return sp.producer
+}
+
+func (sp serviceProvider) Logger() *slog.Logger {
+	if sp.logger == nil {
+		sp.logger = logger.SetupLogger(logger.Env(sp.Config().Env))
+	}
+
+	return sp.logger
+}
+
+func (sp *serviceProvider) QueryLogger() db.QueryLogger {
+	if sp.queryLogger == nil {
+		sp.queryLogger = func(ctx context.Context, q db.Query, args ...interface{}) db.LogFlush {
+			sp.Logger().Debug("db query", slog.String("method", q.Name), slog.String("query", q.QueryRaw))
+			var span trace.Span
+			ctx, span = tracer.Span(ctx, q.Name)
+			span.SetAttributes(attribute.String("query", q.QueryRaw))
+			return tracer.SpanFlush(span)
+		}
+	}
+
+	return sp.queryLogger
+}
+
+func (sp *serviceProvider) RateLimiter() *rate_limiter.RateLimiter {
+	if sp.rateLimiter == nil {
+		sp.rateLimiter = rate_limiter.New(sp.Config().RateLimiter.Limit, sp.Config().RateLimiter.Period)
+	}
+
+	return sp.rateLimiter
 }

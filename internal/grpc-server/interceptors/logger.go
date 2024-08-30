@@ -25,7 +25,7 @@ func loggerInterceptor(ctx context.Context, req interface{}, i *grpc.UnaryServer
 	}
 
 	traceId := trace.SpanContextFromContext(ctx).TraceID().String()
-	log = lg.With(slog.String("trace_id", traceId))
+	log = log.With(slog.String("trace_id", traceId))
 
 	ctx = logger.AssignLogger(ctx, log)
 	log.Debug("called", slog.String("method", i.FullMethod))

@@ -9,14 +9,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/neracastle/go-libs/pkg/db"
 	"github.com/neracastle/go-libs/pkg/sys/logger"
-	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/slog"
 
 	domain "github.com/neracastle/auth/internal/domain/user"
 	"github.com/neracastle/auth/internal/repository/user"
 	pgmodel "github.com/neracastle/auth/internal/repository/user/postgres/model"
-	"github.com/neracastle/auth/internal/tracer"
 )
 
 const (
@@ -27,6 +25,13 @@ const (
 	roleColumn     = "role"
 	createdColumn  = "created_at"
 	updateColumn   = "updated_at"
+)
+
+const (
+	saveMethod   = "repository.user.postgres.Save"
+	updateMethod = "repository.user.postgres.Update"
+	deleteMethod = "repository.user.postgres.Delete"
+	getMethod    = "repository.user.postgres.Get"
 )
 
 var _ user.Repository = (*repo)(nil)
@@ -43,8 +48,7 @@ func New(conn db.Client) user.Repository {
 }
 
 func (r *repo) Save(ctx context.Context, user *domain.User) error {
-	log := logger.GetLogger(ctx)
-	log = log.With(slog.String("method", "repository.user.postgres.Save"))
+	log := logger.GetLogger(ctx).With(slog.String("method", saveMethod))
 	dto := FromDomainToRepo(user)
 
 	pwdHash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
@@ -64,7 +68,7 @@ func (r *repo) Save(ctx context.Context, user *domain.User) error {
 		return err
 	}
 
-	q := db.Query{Name: "Save", QueryRaw: query}
+	q := db.Query{Name: saveMethod, QueryRaw: query}
 	err = r.conn.DB().QueryRow(ctx, q, args...).Scan(&user.ID)
 	if err != nil {
 		log.Error("failed to save user in db", slog.String("error", err.Error()))
@@ -77,7 +81,7 @@ func (r *repo) Save(ctx context.Context, user *domain.User) error {
 }
 
 func (r *repo) Update(ctx context.Context, user *domain.User) error {
-	log := logger.GetLogger(ctx)
+	log := logger.GetLogger(ctx).With(slog.String("method", updateMethod))
 	dto := FromDomainToRepo(user)
 
 	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
@@ -90,14 +94,14 @@ func (r *repo) Update(ctx context.Context, user *domain.User) error {
 		Where(sq.Eq{idColumn: dto.ID}).
 		ToSql()
 	if err != nil {
-		log.Error("failed to build update query", slog.String("error", err.Error()), slog.String("method", "repository.user.postgres.Update"))
+		log.Error("failed to build update query", slog.String("error", err.Error()))
 		return err
 	}
 
-	q := db.Query{Name: "Update", QueryRaw: query}
+	q := db.Query{Name: updateMethod, QueryRaw: query}
 	_, err = r.conn.DB().Exec(ctx, q, args...)
 	if err != nil {
-		log.Error("failed to update user in db", slog.String("error", err.Error()), slog.String("method", "repository.user.postgres.Update"))
+		log.Error("failed to update user in db", slog.String("error", err.Error()))
 		return err
 	}
 
@@ -105,24 +109,23 @@ func (r *repo) Update(ctx context.Context, user *domain.User) error {
 }
 
 func (r *repo) Delete(ctx context.Context, id int64) error {
-	log := logger.GetLogger(ctx)
-	q := db.Query{Name: "Delete", QueryRaw: "DELETE FROM auth.users WHERE id = $1"}
-	_, err := r.conn.DB().Exec(ctx, q, id)
+	log := logger.GetLogger(ctx).With(slog.String("method", deleteMethod))
+	q := db.Query{Name: deleteMethod, QueryRaw: "DELETE FROM auth.users WHERE id = $1"}
+	qr, err := r.conn.DB().Exec(ctx, q, id)
 	if err != nil {
-		log.Error("failed to delete user", slog.String("error", err.Error()), slog.String("method", "repository.user.postgres.Delete"))
+		log.Error("failed to delete user", slog.String("error", err.Error()))
 		return err
+	}
+
+	if qr.RowsAffected() == 0 {
+		return user.ErrUserNotFound
 	}
 
 	return nil
 }
 
 func (r *repo) Get(ctx context.Context, filter user.SearchFilter) (*domain.User, error) {
-	var span trace.Span
-	ctx, span = tracer.Span(ctx, "repository.user.postgres.Get")
-	defer span.End()
-
-	log := logger.GetLogger(ctx)
-	log = log.With(slog.String("method", "repository.user.postgres.Get"), slog.Int64("user_id", filter.ID), slog.String("email", filter.Email))
+	log := logger.GetLogger(ctx).With(slog.String("method", getMethod), slog.Int64("user_id", filter.ID), slog.String("email", filter.Email))
 
 	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	selQuery := psql.Select(idColumn, emailColumn, passwordColumn, nameColumn, roleColumn, createdColumn).From("auth.users")
@@ -140,7 +143,7 @@ func (r *repo) Get(ctx context.Context, filter user.SearchFilter) (*domain.User,
 		return nil, err
 	}
 
-	q := db.Query{Name: "Get", QueryRaw: queryStr}
+	q := db.Query{Name: getMethod, QueryRaw: queryStr}
 	res, err := r.conn.DB().Query(ctx, q, args...)
 
 	if err != nil {

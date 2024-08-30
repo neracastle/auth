@@ -3,9 +3,9 @@ package usecases
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"github.com/IBM/sarama"
+	syserr "github.com/neracastle/go-libs/pkg/sys/error"
 	"github.com/neracastle/go-libs/pkg/sys/logger"
 	"golang.org/x/exp/slog"
 
@@ -15,14 +15,14 @@ import (
 
 // Create создает нового пользователя
 func (s *Service) Create(ctx context.Context, req def.CreateDTO) (int64, error) {
-	log := logger.GetLogger(ctx)
-	log.Debug("called", slog.String("method", "usecases.Create"))
+	log := logger.GetLogger(ctx).With(slog.String("method", "usecases.Create"))
+	log.Debug("called")
 
 	var err error
 	var newUser *domain.User
 
 	if req.Password != req.PasswordConfirm {
-		return 0, errors.New("пароли не совпадают")
+		return 0, syserr.New("пароли не совпадают", syserr.InvalidArgument)
 	}
 
 	if req.IsAdmin {
@@ -32,19 +32,19 @@ func (s *Service) Create(ctx context.Context, req def.CreateDTO) (int64, error) 
 	}
 
 	if err != nil {
-		return 0, err
+		return 0, syserr.NewFromError(err, syserr.InvalidArgument)
 	}
 
 	err = s.usersRepo.Save(ctx, newUser)
 	if err != nil {
-		log.Error("failed to create user", slog.String("error", err.Error()), slog.String("method", "usecases.Create"))
-		return 0, err
+		log.Error("failed to create user", slog.String("error", err.Error()))
+		return 0, syserr.New("Не удалось создать пользователя", syserr.Internal)
 	}
 
 	jsonStr, err := json.Marshal(newUser)
 	if err != nil {
-		log.Error("failed to marshal user", slog.String("error", err.Error()), slog.String("method", "usecases.Create"))
-		return 0, err
+		log.Error("failed to marshal user", slog.String("error", err.Error()))
+		return 0, syserr.New("Не удалось создать пользователя", syserr.Internal)
 	}
 
 	partition, offset, err := s.producer.SendMessage(&sarama.ProducerMessage{
@@ -52,11 +52,10 @@ func (s *Service) Create(ctx context.Context, req def.CreateDTO) (int64, error) 
 		Value: sarama.ByteEncoder(jsonStr),
 	})
 	if err != nil {
-		log.Error("failed to send message to kafka", slog.String("error", err.Error()), slog.String("method", "usecases.Create"))
-		return 0, err
+		log.Error("failed to send message to kafka", slog.String("error", err.Error()))
+	} else {
+		log.Debug("message sent to kafka", slog.Int("partition", int(partition)), slog.Int64("offset", offset))
 	}
-
-	log.Debug("message sent to kafka", slog.Int("partition", int(partition)), slog.Int64("offset", offset))
 
 	return newUser.ID, nil
 }
